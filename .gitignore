@@ -1,0 +1,38 @@
+# Virtual environments
+.venv/
+.venv.old/
+venv/
+env/
+.conda/
+
+# Python bytecode / build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Jupyter
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipython/
+
+# Environment / secrets
+.env
+.env.local
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# MEGA sync artifacts
+.megaignore
+*.mega-old
