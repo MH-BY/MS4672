@@ -31,7 +31,8 @@ def run(protocol: protocol_api.ProtocolContext):
     # 3. Protocol steps (define the liquid handling operations)
     
     # Pick up a tip
-    pipette.pick_up_tip()
+    #pipette.pick_up_tip()
+    pipette.pick_up_tip(tiprack['A1'])
     
     # Aspirate 20μL from reservoir well A1
     pipette.aspirate(20, reservoir['A3'])
