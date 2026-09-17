@@ -274,7 +274,7 @@ function showNotes(){const s=scenes[state.slide];$('modal-title').textContent='T
 function showIndex(){$('modal-title').textContent='The lesson';$('modal-body').innerHTML='<div class="chapters">'+scenes.map((s,i)=>`<button data-slide="${i}" aria-current="${i===state.slide}"><span>${String(i+1).padStart(2,'0')}</span>${s.title.replace(/<[^>]+>/g,' ')}</button>`).join('')+'</div>';$('modal-body').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('modal').close();go(+b.dataset.slide)});$('modal').showModal()}
 function fullscreen(){if(document.fullscreenElement)document.exitFullscreen?.();else document.documentElement.requestFullscreen?.().catch(()=>{})}
 $('prev').onclick=()=>go(state.slide-1);$('next').onclick=()=>go(state.slide===scenes.length-1?0:state.slide+1);$('index').onclick=showIndex;$('notes').onclick=showNotes;$('close-modal').onclick=()=>$('modal').close();$('fullscreen').onclick=fullscreen;$('replay').onclick=()=>{if(state.mode===8){stopRun();state.n=0;updatePlot(false);play()}else updatePlot(true,true)};
-document.addEventListener('keydown',e=>{if($('modal').open||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;if(e.key==='ArrowRight'||e.key==='PageDown'||(e.code==='Space'&&e.target.tagName!=='BUTTON')){e.preventDefault();go(Math.min(scenes.length-1,state.slide+1))}if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(state.slide-1)}if(e.key==='Home'){e.preventDefault();go(0)}if(e.key==='End'){e.preventDefault();go(scenes.length-1)}if(e.key.toLowerCase()==='f')fullscreen();if(e.key.toLowerCase()==='n')showNotes();if(e.key.toLowerCase()==='r')$('replay').click()});
+document.addEventListener('keydown',e=>{if($('modal').open||document.getElementById('student-notes-dialog')?.contains?.(e.target)||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;if(e.key==='ArrowRight'||e.key==='PageDown'||(e.code==='Space'&&e.target.tagName!=='BUTTON')){e.preventDefault();go(Math.min(scenes.length-1,state.slide+1))}if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(state.slide-1)}if(e.key==='Home'){e.preventDefault();go(0)}if(e.key==='End'){e.preventDefault();go(scenes.length-1)}if(e.key.toLowerCase()==='f')fullscreen();if(e.key.toLowerCase()==='n')showNotes();if(e.key.toLowerCase()==='r')$('replay').click()});
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>updatePlot(false),100)});
 const initial=Number((location.hash.match(/slide-(\d+)/)||[])[1]||1)-1;go(Math.max(0,Math.min(scenes.length-1,initial)));
 // Read-only numerical access for validation and teaching.
@@ -408,6 +408,71 @@ button.addEventListener('click',async()=>{
  }catch(error){preview.document.body.textContent='Export could not finish: '+error.message+'. Close this tab and try again.';}
  finally{frame.remove();button.disabled=false;button.textContent='Export PDF';}
 });
+})();
+</script>
+
+
+
+<style>
+#student-notes-dialog{position:fixed;inset:auto;left:auto;right:22px;top:110px;margin:0;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:16px;z-index:50;border-radius:12px;box-shadow:0 10px 35px #0006;overflow:auto}
+#student-notes-dialog h2{font-size:19px;margin:0}
+#student-notes-drag{cursor:grab;touch-action:none;user-select:none;align-items:center;margin:-4px -4px 10px;padding:4px;border-radius:6px}
+#student-notes-drag:active{cursor:grabbing}
+#student-notes-drag:focus-visible{outline:2px solid #9ed5ff;outline-offset:2px}
+#student-notes-dialog .notes-intro{font-size:11px;margin:0 0 10px;line-height:1.45}
+#student-notes-dialog label{font-size:12px}
+#student-notes-slide{width:100%;padding:7px;margin:5px 0 10px;background:#14235d;color:white;border:1px solid #8298c3;border-radius:6px;font:12px 'Segoe UI',Arial,sans-serif}
+#student-notes-text{display:block;width:100%;min-height:100px;height:155px;resize:vertical;border:1px solid #8298c3;border-radius:7px;background:#101c50;color:white;padding:10px;font:14px/1.5 'Avenir Next','Segoe UI',Arial,sans-serif}
+.student-notes-bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}
+#student-notes-status{font-size:11px;color:#d5e0f4;line-height:1.4}
+#student-notes-download{font-size:11px;padding:7px 9px;min-height:32px;white-space:nowrap}
+@media print{#student-notes-dialog{display:none!important}}
+</style>
+<dialog id="student-notes-dialog" aria-labelledby="student-notes-heading">
+<div class="dialog-top" id="student-notes-drag" tabindex="0" aria-label="Move notes window: drag or use arrow keys"><h2 id="student-notes-heading">⠿ My notes</h2><button type="button" class="quiet" id="student-notes-close" aria-label="Close my notes">Close ✕</button></div>
+<p class="notes-intro">Drag the title bar to move. Notes save in this browser; download a backup to keep a copy.</p>
+<label for="student-notes-slide">Notes for slide</label><select id="student-notes-slide"></select>
+<textarea id="student-notes-text" aria-label="Your notes for the selected slide" placeholder="Write your questions, examples, or key takeaways here…"></textarea>
+<div class="student-notes-bottom"><span id="student-notes-status" role="status" aria-live="polite"></span><button type="button" class="action secondary" id="student-notes-download">Download notes</button></div>
+</dialog>
+<script id="student-notes-script">
+(()=>{
+ const key='ms4672-week6-student-notes-v1';
+ const dialog=document.getElementById('student-notes-dialog'),select=document.getElementById('student-notes-slide'),input=document.getElementById('student-notes-text'),status=document.getElementById('student-notes-status');
+ const lesson=window.GPLesson;
+ let notes={},selected='',storageOK=true;
+ try{const raw=localStorage.getItem(key);if(raw){const parsed=JSON.parse(raw);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('Invalid notes');notes=parsed;}}
+ catch(e){storageOK=false;}
+ const slideKey=(scene)=>scene.key||'gp-'+scene.gp;
+ const title=(scene)=>{const el=document.createElement('div');el.innerHTML=scene.title;return el.textContent.replace(/\s+/g,' ').trim();};
+ lesson.scenes.forEach((scene,i)=>{const option=document.createElement('option');option.value=slideKey(scene);option.textContent=(i+1)+'. '+title(scene);select.append(option);});
+ const button=document.createElement('button');button.id='my-notes';button.className='quiet';button.type='button';button.textContent='My notes';
+ document.getElementById('notes').after(button);
+ const showStatus=()=>{status.textContent=storageOK?'Saved automatically in this browser.':'Browser storage is unavailable. Download your notes before closing this page.';};
+ const save=()=>{if(!selected)return;notes[selected]=input.value;try{localStorage.setItem(key,JSON.stringify(notes));storageOK=true;}catch(e){storageOK=false;}showStatus();};
+ const load=()=>{selected=select.value;input.value=typeof notes[selected]==='string'?notes[selected]:'';showStatus();};
+ button.addEventListener('click',()=>{select.value=slideKey(lesson.scenes[lesson.state.slide]);load();if(!dialog.open)dialog.show();keepInView();input.focus();});
+ const handle=document.getElementById('student-notes-drag');
+ const place=(x,y)=>{const r=dialog.getBoundingClientRect();dialog.style.left=Math.max(12,Math.min(x,window.innerWidth-r.width-12))+'px';dialog.style.top=Math.max(12,Math.min(y,window.innerHeight-r.height-12))+'px';dialog.style.right='auto';};
+ const keepInView=()=>{if(dialog.open){const r=dialog.getBoundingClientRect();place(r.left,r.top);}};
+ let drag=null;
+ handle.addEventListener('pointerdown',e=>{if(e.target.closest('button')||e.button!==0)return;const r=dialog.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX-r.left,y:e.clientY-r.top};handle.setPointerCapture(e.pointerId);e.preventDefault();});
+ handle.addEventListener('pointermove',e=>{if(drag&&drag.id===e.pointerId)place(e.clientX-drag.x,e.clientY-drag.y);});
+ const endDrag=()=>{drag=null;};
+ handle.addEventListener('pointerup',endDrag);handle.addEventListener('pointercancel',endDrag);handle.addEventListener('lostpointercapture',endDrag);
+ handle.addEventListener('keydown',e=>{if(e.target!==handle)return;const moves={ArrowLeft:[-20,0],ArrowRight:[20,0],ArrowUp:[0,-20],ArrowDown:[0,20]};if(moves[e.key]){e.preventDefault();e.stopPropagation();const r=dialog.getBoundingClientRect();place(r.left+moves[e.key][0],r.top+moves[e.key][1]);}});
+ dialog.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();dialog.close();}});
+ window.addEventListener('resize',keepInView);
+ input.addEventListener('input',save);
+ select.addEventListener('change',()=>{save();load();input.focus();});
+ document.getElementById('student-notes-close').addEventListener('click',()=>dialog.close());
+ dialog.addEventListener('close',()=>{save();button.focus();});
+ window.addEventListener('pagehide',save);
+ document.getElementById('student-notes-download').addEventListener('click',()=>{
+  save();const sections=lesson.scenes.map((scene,i)=>{const text=notes[slideKey(scene)];return typeof text==='string'&&text.trim()?(i+1)+'. '+title(scene)+'\n'+text:null;}).filter(Boolean);
+  const blob=new Blob(['MS4672 Week 6 — My notes\n\n'+(sections.join('\n\n---\n\n')||'No notes yet.')],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='MS4672-Week6-My-notes.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+ });
 })();
 </script>
 
